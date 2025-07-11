@@ -54,8 +54,8 @@ show_usage() {
     echo "  GITHUB_TOKEN       Your GitHub personal access token"
     echo ""
     echo "Example:"
-    echo "  $0 https://github.com/username/repo.git"
-    echo "  $0 https://github.com/username/repo.git my-fork"
+    echo "  $0 https://github.com/username/repo"
+    echo "  $0 https://github.com/username/repo my-fork"
 }
 
 # Function to validate GitHub credentials
@@ -68,6 +68,30 @@ validate_github_creds() {
     if [ -z "$GITHUB_TOKEN" ]; then
         print_error "GITHUB_TOKEN is not set. Please set it in .env file or export it."
         exit 1
+    fi
+}
+
+# Function to check if repository belongs to the user
+check_repo_ownership() {
+    local source_url="$1"
+
+    echo $source_url
+
+    # Extract owner and repo name from GitHub URL
+    if [[ "$source_url" =~ https://github\.com/([^/]+)/([^/]+) ]]; then
+        local owner="${BASH_REMATCH[1]}"
+        local repo_name="${BASH_REMATCH[2]}"
+
+        # Remove .git suffix if present
+        repo_name="${repo_name%.git}"
+
+        if [ "$owner" = "$GITHUB_USERNAME" ]; then
+            print_error "Cannot mirror your own repository: $source_url"
+            print_error "The source repository already belongs to you ($GITHUB_USERNAME)"
+            exit 1
+        fi
+    else
+        print_warning "Could not parse GitHub URL format. Proceeding with caution..."
     fi
 }
 
@@ -88,8 +112,8 @@ create_github_repo() {
     # Check if repo already exists
     if curl -s -H "Authorization: token $GITHUB_TOKEN" \
         "https://api.github.com/repos/$GITHUB_USERNAME/$repo_name" | grep -q '"id"'; then
-        print_warning "Repository $repo_name already exists on GitHub"
-        return 0
+        print_error "Repository $repo_name already exists on your GitHub account, please specify a different name"
+        exit 1
     fi
 
     # Create the repository
@@ -123,13 +147,15 @@ setup_mirror() {
     # Create mirror directory if it doesn't exist
     mkdir -p "$MIRROR_DIR"
 
-    # Clone the repository if it doesn't exist
+    # Clone the repository if it doesn't exist, or update if it does
     if [ ! -d "$repo_path" ]; then
         print_status "Cloning repository..."
         git clone --mirror "$source_url" "$repo_path"
     else
-        print_error "Repository already exists at $repo_path. Aborting."
-        exit 1
+        print_warning "Repository already exists at $repo_path. Attempting to update..."
+        cd "$repo_path"
+        git fetch --all
+        cd - >/dev/null
     fi
 
     # Change to repository directory
@@ -150,11 +176,19 @@ setup_mirror() {
     print_status "Configuring push settings..."
     git config remote.upstream.pushurl "no_push"
 
+    # Remove problematic refs before pushing
+    print_status "Cleaning up problematic references..."
+    git for-each-ref --format='%(refname)' refs/ | grep -E '^refs/pull/' | while read ref; do
+        git update-ref -d "$ref" 2>/dev/null || true
+    done
+
     # Push to your GitHub repository
     print_status "Pushing to your GitHub repository..."
+
+    # Push all branches and tags (mirror repositories handle this properly)
     git push origin --mirror
 
-    print_success "Mirror setup complete!"
+    print_success "Mirror pushed to your GitHub repository!"
     print_status "Repository location: $repo_path"
     print_status "Upstream: $source_url"
     print_status "Your mirror: https://github.com/$GITHUB_USERNAME/$repo_name"
@@ -182,6 +216,9 @@ main() {
 
     # Validate GitHub credentials
     validate_github_creds
+
+    # Check if repository belongs to the user
+    check_repo_ownership "$source_url"
 
     # Extract repo name if not provided
     if [ -z "$target_name" ]; then
