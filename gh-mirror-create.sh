@@ -7,7 +7,7 @@
 set -e # Exit on any error
 
 # Load shared utilities
-source "$(dirname "$0")/utils.sh"
+source "$(dirname "$0")/utils/gh-mirror-utils.sh"
 
 # Load environment variables
 load_env
