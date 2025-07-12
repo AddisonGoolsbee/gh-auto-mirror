@@ -6,115 +6,16 @@
 
 set -e # Exit on any error
 
+# Load shared utilities
+source "$(dirname "$0")/utils.sh"
+
 # Load environment variables
-if [ -f ".env" ]; then
-    source .env
-fi
+load_env
 
 # Default values
 MIRROR_DIR="${MIRROR_DIR:-$HOME/gh-mirrors}"
 GITHUB_USERNAME="${GITHUB_USERNAME:-}"
 GITHUB_TOKEN="${GITHUB_TOKEN:-}"
-
-# Colors for output
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-NC='\033[0m' # No Color
-
-# Function to print colored output
-print_status() {
-    echo -e "${BLUE}[INFO]${NC} $1"
-}
-
-print_success() {
-    echo -e "${GREEN}[SUCCESS]${NC} $1"
-}
-
-print_warning() {
-    echo -e "${YELLOW}[WARNING]${NC} $1"
-}
-
-print_error() {
-    echo -e "${RED}[ERROR]${NC} $1"
-}
-
-# Function to validate GitHub credentials
-validate_github_creds() {
-    if [ -z "$GITHUB_USERNAME" ]; then
-        print_error "GITHUB_USERNAME is not set. Please set it in .env file or export it."
-        exit 1
-    fi
-
-    if [ -z "$GITHUB_TOKEN" ]; then
-        print_error "GITHUB_TOKEN is not set. Please set it in .env file or export it."
-        exit 1
-    fi
-}
-
-# Function to add mirror notice to README files
-add_mirror_notice() {
-    local repo_name="$1"
-    local upstream_url=""
-
-    # Get upstream URL
-    if git remote get-url upstream >/dev/null 2>&1; then
-        upstream_url=$(git remote get-url upstream)
-    else
-        print_warning "No upstream remote found for $repo_name"
-        return 1
-    fi
-
-    # Create temporary working directory for bare repository
-    local temp_work_dir=$(mktemp -d)
-    print_status "Creating temporary working directory for file operations..."
-
-    # Checkout the repository to temporary directory
-    git --work-tree="$temp_work_dir" --git-dir="." checkout HEAD -- .
-
-    # Find README files (case insensitive)
-    local readme_files=()
-    for readme in README.md README.rst README.txt README; do
-        if [ -f "$temp_work_dir/$readme" ]; then
-            readme_files+=("$readme")
-        fi
-    done
-
-    # If no README found, create one
-    if [ ${#readme_files[@]} -eq 0 ]; then
-        print_status "No README found, creating README.md..."
-        readme_files=("README.md")
-    fi
-
-    # Process each README file
-    for readme in "${readme_files[@]}"; do
-        local temp_file=$(mktemp)
-        local mirror_notice="*This is a mirror. See upstream: $upstream_url*\n\n"
-
-        # Check if mirror notice already exists
-        if grep -q "This is a mirror. See upstream:" "$temp_work_dir/$readme" 2>/dev/null; then
-            print_status "Mirror notice already exists in $readme, skipping..."
-            continue
-        fi
-
-        # Add mirror notice at the beginning of the file
-        echo -e "$mirror_notice$(cat "$temp_work_dir/$readme")" >"$temp_file"
-        mv "$temp_file" "$temp_work_dir/$readme"
-
-        print_status "Added mirror notice to $readme"
-    done
-
-    # Add and commit the changes using the bare repository
-    if ! git --work-tree="$temp_work_dir" --git-dir="." diff --quiet; then
-        git --work-tree="$temp_work_dir" --git-dir="." add .
-        git --work-tree="$temp_work_dir" --git-dir="." commit -m "Add readme mirror line" >/dev/null 2>&1
-        print_status "Committed mirror notice changes"
-    fi
-
-    # Clean up temporary directory
-    rm -rf "$temp_work_dir"
-}
 
 # Function to update a single mirror repository
 update_mirror() {
@@ -161,10 +62,7 @@ update_mirror() {
     add_mirror_notice "$repo_name"
 
     # Remove problematic refs before pushing
-    print_status "Cleaning up problematic references..."
-    git for-each-ref --format='%(refname)' refs/ | grep -E '^refs/pull/' | while read ref; do
-        git update-ref -d "$ref" 2>/dev/null || true
-    done
+    cleanup_problematic_refs
 
     # Push all changes to your GitHub repository
     print_status "Pushing updates to your GitHub repository..."
