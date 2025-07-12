@@ -112,24 +112,28 @@ create_github_repo() {
     # Check if repo already exists
     if curl -s -H "Authorization: token $GITHUB_TOKEN" \
         "https://api.github.com/repos/$GITHUB_USERNAME/$repo_name" | grep -q '"id"'; then
-        print_error "Repository $repo_name already exists on your GitHub account, please specify a different name"
-        exit 1
+        print_warning "Repository $repo_name already exists on your GitHub account, continuing..."
+        local response='{"id":"already_exists"}'
+    else
+        # Create the repository
+        local response=$(curl -s -X POST \
+            -H "Authorization: token $GITHUB_TOKEN" \
+            -H "Accept: application/vnd.github.v3+json" \
+            "https://api.github.com/user/repos" \
+            -d "{
+                \"name\": \"$repo_name\",
+                \"description\": \"$description\",
+                \"private\": false,
+                \"auto_init\": false
+            }")
     fi
 
-    # Create the repository
-    local response=$(curl -s -X POST \
-        -H "Authorization: token $GITHUB_TOKEN" \
-        -H "Accept: application/vnd.github.v3+json" \
-        "https://api.github.com/user/repos" \
-        -d "{
-            \"name\": \"$repo_name\",
-            \"description\": \"$description\",
-            \"private\": false,
-            \"auto_init\": false
-        }")
-
     if echo "$response" | grep -q '"id"'; then
-        print_success "GitHub repository created successfully"
+        if echo "$response" | grep -q '"already_exists"'; then
+            print_warning "GitHub repository creation skipped"
+        else
+            print_success "GitHub repository created successfully"
+        fi
     else
         print_error "Failed to create GitHub repository: $response"
         exit 1
