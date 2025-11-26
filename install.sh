@@ -39,6 +39,10 @@ print_status "Script directory: $SCRIPT_DIR"
 TARGET_DIR="$HOME/.local/bin"
 print_status "Target directory: $TARGET_DIR"
 
+# Define the config directory for environment files
+CONFIG_DIR="${GH_MIRROR_CONFIG_DIR:-$HOME/.config/gh-auto-mirror}"
+print_status "Config directory: $CONFIG_DIR"
+
 # Create .local/bin directory if it doesn't exist
 if [ ! -d "$TARGET_DIR" ]; then
     print_status "Creating directory: $TARGET_DIR"
@@ -74,9 +78,13 @@ else
     print_status "Utils directory already exists: $UTILS_DIR"
 fi
 
-# Check if environment file exists
-if [ ! -f "$SCRIPT_DIR/.env" ]; then
-    print_warning ".env file not found. You'll need to create a .env file manually in $TARGET_DIR"
+# Ensure config directory exists
+if [ ! -d "$CONFIG_DIR" ]; then
+    print_status "Creating config directory: $CONFIG_DIR"
+    mkdir -p "$CONFIG_DIR"
+    print_success "Created $CONFIG_DIR"
+else
+    print_status "Config directory already exists: $CONFIG_DIR"
 fi
 
 # Copy scripts to .local/bin and rename them
@@ -88,19 +96,17 @@ cp "$SCRIPT_DIR/utils/gh-mirror-utils.sh" "$UTILS_DIR/gh-mirror-utils.sh"
 
 print_success "Scripts copied successfully"
 
-# Copy environment file if it exists
-if [ -f "$SCRIPT_DIR/.env" ]; then
-    print_status "Copying environment file..."
-    if [ -f "$TARGET_DIR/.env" ]; then
-        # Append with extra newline if target file already exists
-        echo "" >>"$TARGET_DIR/.env"
-        cat "$SCRIPT_DIR/.env" >>"$TARGET_DIR/.env"
-        print_success "Environment file appended to existing .env"
-    else
-        # Copy if target file doesn't exist
-        cp "$SCRIPT_DIR/.env" "$TARGET_DIR/.env"
-        print_success "Environment file copied"
-    fi
+# Seed .env if missing
+if [ -f "$CONFIG_DIR/.env" ]; then
+    print_status "Existing .env found at $CONFIG_DIR/.env"
+elif [ -f "$SCRIPT_DIR/.env" ]; then
+    cp "$SCRIPT_DIR/.env" "$CONFIG_DIR/.env"
+    print_success "Copied .env to $CONFIG_DIR/.env"
+elif [ -f "$SCRIPT_DIR/.env.example" ]; then
+    cp "$SCRIPT_DIR/.env.example" "$CONFIG_DIR/.env"
+    print_success "Created $CONFIG_DIR/.env from template. REMEMBER TO UPDATE IT"
+else
+    print_warning "No .env or template found. Please create $CONFIG_DIR/.env manually."
 fi
 
 # Make scripts executable
@@ -157,21 +163,18 @@ fi
 echo ""
 print_status "📝 Environment Setup Required:"
 echo ""
-echo "1. Copy the environment template:"
-echo "   cp $TARGET_DIR/env.example $TARGET_DIR/.env"
+echo "1. Edit the .env file with your GitHub credentials:"
+echo "   nano $CONFIG_DIR/.env"
 echo ""
-echo "2. Edit the .env file with your GitHub credentials:"
-echo "   nano $TARGET_DIR/.env"
-echo ""
-echo "3. Required environment variables:"
+echo "2. Required environment variables:"
 echo "   • GITHUB_USERNAME - Your GitHub username"
 echo "   • GITHUB_TOKEN - Your GitHub personal access token"
 echo "   • MIRROR_DIR - Directory for mirrored repos (optional, defaults to ~/gh-mirrors)"
 echo ""
-echo "4. Generate a GitHub token at: https://github.com/settings/tokens"
+echo "3. Generate a GitHub token at: https://github.com/settings/tokens"
 echo "   Required scopes: repo, workflow"
 echo ""
-echo "Note: The .env file will be in $TARGET_DIR so the scripts can find it automatically."
+echo "Note: The .env file will be in $CONFIG_DIR so the scripts can find it automatically."
 
 echo ""
 print_success "🎉 Installation complete!"

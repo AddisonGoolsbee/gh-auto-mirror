@@ -42,9 +42,26 @@ validate_github_creds() {
 
 # Function to load environment variables
 load_env() {
-    if [ -f ".env" ]; then
-        source .env
-    fi
+    # Prefer config dir next to installed scripts; fall back to script dir, then CWD
+    local utils_dir
+    utils_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    local base_dir
+    base_dir="$(dirname "$utils_dir")"
+    local config_dir="${GH_MIRROR_CONFIG_DIR:-$HOME/.config/gh-auto-mirror}"
+
+    local env_candidates=(
+        "$config_dir/.env"
+        "$base_dir/.env"
+        ".env"
+    )
+
+    for env_file in "${env_candidates[@]}"; do
+        if [ -f "$env_file" ]; then
+            # shellcheck source=/dev/null
+            source "$env_file"
+            return
+        fi
+    done
 }
 
 # Function to check if repository belongs to the user
