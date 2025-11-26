@@ -78,6 +78,9 @@ update_mirror() {
 
 # Function to update all mirrors
 update_all_mirrors() {
+    local current_datetime
+    current_datetime="$(date '+%Y-%m-%d %H:%M:%S %Z')"
+    print_status "$current_datetime"
     print_status "Starting mirror update process..."
     print_status "Mirror directory: $MIRROR_DIR"
 
